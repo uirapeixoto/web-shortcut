@@ -197,13 +197,10 @@ const rendered = ref('')
 
 async function renderMarkdown() {
   rendering.value = true
-  try {
-    rendered.value = await marked.parse(source.value)
-    await nextTick()
-    await renderMermaid()
-  } finally {
-    rendering.value = false
-  }
+  rendered.value = marked.parse(source.value)
+  rendering.value = false   // mostra o div antes de chamar renderMermaid, senão previewRef é null
+  await nextTick()
+  await renderMermaid()
 }
 
 async function renderMermaid() {
