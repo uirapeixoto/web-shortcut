@@ -137,9 +137,7 @@ async function initReader() {
   loading.value = true
 
   try {
-    // openAs:'directory' faz o epubjs buscar cada recurso via HTTP
-    // usando props.url como base (ex: /api/ebooks/1/epub/)
-    book = ePub(props.url, { openAs: 'directory' })
+    book = ePub(props.url)
 
     rendition = book.renderTo(epubMount.value, {
       width:  '100%',

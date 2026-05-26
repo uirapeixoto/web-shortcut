@@ -79,7 +79,7 @@ def list_ebooks(db: Session = Depends(get_db)):
     ]
 
 
-@router.get("/{ebook_id}/file")
+@router.get("/{ebook_id}/book.epub")
 def serve_epub(ebook_id: int, db: Session = Depends(get_db)):
     ebook = db.query(Ebook).filter(Ebook.id == ebook_id).first()
     if not ebook:

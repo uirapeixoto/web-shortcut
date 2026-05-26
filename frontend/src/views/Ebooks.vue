@@ -4,7 +4,7 @@
     <Transition name="reader-fade">
       <div class="reader-portal" v-if="activeBook">
         <EpubFlipReader
-          :url="`/api/ebooks/${activeBook.id}/epub/`"
+          :url="`/api/ebooks/${activeBook.id}/book.epub`"
           :book-title="activeBook.title"
           @close="activeBook = null"
         />
