@@ -15,7 +15,13 @@
       "Bash(.venv/bin/pip install *)",
       "Bash(.venv/bin/uvicorn app:app --host 0.0.0.0 --port 8001)",
       "Bash(curl -s http://localhost:8001/categories/ -w \"\\\\nHTTP %{http_code}\")",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "Read(//home/uirapeixoto/projetos/web-shortcut/**)",
+      "Bash(pip show *)",
+      "Bash(pip3 show *)",
+      "Bash(docker compose *)",
+      "Bash(.venv/bin/pip show *)",
+      "Bash(.venv/bin/uvicorn app:app --host 0.0.0.0 --port 8001 --reload)"
     ]
   }
 }

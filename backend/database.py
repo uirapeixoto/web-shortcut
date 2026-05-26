@@ -31,6 +31,16 @@ class Shortcut(Base):
     category = relationship("Category", back_populates="shortcuts")
 
 
+class Ebook(Base):
+    __tablename__ = "ebooks"
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    filename = Column(String, nullable=False)
+    original_name = Column(String, nullable=False)
+    size = Column(Integer, default=0)
+    created_at = Column(String, default="")
+
+
 def get_db():
     db = SessionLocal()
     try:
@@ -42,4 +52,5 @@ def get_db():
 def init_db():
     import os
     os.makedirs("data", exist_ok=True)
+    os.makedirs("upload/ebook/epub", exist_ok=True)
     Base.metadata.create_all(bind=engine)
