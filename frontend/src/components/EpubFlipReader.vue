@@ -72,11 +72,23 @@
       </div>
     </div>
 
-    <!-- Loading -->
+    <!-- Loading / Error overlay -->
     <Transition name="fade">
-      <div class="loading-screen" v-if="loading">
-        <div class="spinner"></div>
-        <span>Carregando…</span>
+      <div class="loading-screen" v-if="loading || errorMsg">
+        <template v-if="errorMsg">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span class="err-title">Não foi possível abrir o livro</span>
+          <span class="err-msg">{{ errorMsg }}</span>
+          <div class="err-actions">
+            <button class="err-btn" @click="$emit('close')">Fechar</button>
+            <button class="err-btn err-retry" @click="retryLoad">Tentar novamente</button>
+          </div>
+        </template>
+        <template v-else>
+          <div class="spinner"></div>
+          <span>Carregando…</span>
+          <button class="cancel-btn" @click="$emit('close')">Cancelar</button>
+        </template>
       </div>
     </Transition>
 
@@ -91,7 +103,7 @@ const props = defineProps({
   url: { type: String, required: true },
   bookTitle: { type: String, default: '' },
 })
-defineEmits(['close'])
+const emit = defineEmits(['close'])
 
 const readerRoot   = ref(null)
 const epubMount    = ref(null)
@@ -102,6 +114,7 @@ const toc        = ref([])
 const showToc    = ref(false)
 const progress   = ref(0)
 const loading    = ref(true)
+const errorMsg   = ref('')
 const isDark     = ref(false)
 const fontSize   = ref(100)
 const navigating = ref(false)
@@ -130,11 +143,21 @@ function cleanup() {
   if (rendition) { rendition.destroy(); rendition = null }
   if (book)      { book.destroy();      book = null }
   loading.value = true
+  errorMsg.value = ''
 }
+
+async function retryLoad() {
+  cleanup()
+  await nextTick()
+  await initReader()
+}
+
+const LOAD_TIMEOUT_MS = 20_000
 
 async function initReader() {
   if (!epubMount.value) return
   loading.value = true
+  errorMsg.value = ''
 
   try {
     book = ePub(props.url)
@@ -148,12 +171,13 @@ async function initReader() {
 
     applyTheme()
 
-    await rendition.display()
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Tempo limite excedido ao carregar o livro.')), LOAD_TIMEOUT_MS)
+    )
+    await Promise.race([rendition.display(), timeout])
 
-    // Mostra o conteúdo assim que a primeira página renderizar
     loading.value = false
 
-    // Operações pesadas em background — não bloqueiam a UI
     book.ready.then(async () => {
       const meta = book.packaging?.metadata
       title.value = meta?.title || props.bookTitle || 'Livro'
@@ -161,20 +185,22 @@ async function initReader() {
       const nav = await book.navigation
       toc.value = flattenToc(nav?.toc || [])
 
-      // Gera localizações em background para a barra de progresso
       book.locations.generate(1024)
     }).catch(err => console.warn('book.ready error:', err))
 
     rendition.on('locationChanged', loc => {
-      if (book.locations?.length()) {
-        const pct = book.locations.percentageFromCfi(loc.start.cfi)
-        if (typeof pct === 'number') progress.value = Math.round(pct * 100)
-      }
+      try {
+        if (book?.locations?.length()) {
+          const pct = book.locations.percentageFromCfi(loc.start.cfi)
+          if (typeof pct === 'number' && !isNaN(pct)) progress.value = Math.round(pct * 100)
+        }
+      } catch (_) {}
     })
 
   } catch (err) {
     console.error('epubjs error:', err)
     loading.value = false
+    errorMsg.value = err?.message || 'Erro desconhecido ao abrir o arquivo EPUB.'
   }
 }
 
@@ -188,8 +214,10 @@ async function slide(direction) {
   await wait(SLIDE_MS)
 
   // Navigate (epubjs renders new content while iframe is "off screen")
-  if (direction === 'next') await rendition.next()
-  else                      await rendition.prev()
+  try {
+    if (direction === 'next') await rendition.next()
+    else                      await rendition.prev()
+  } catch (_) {}
 
   // Phase 2: position the incoming page on the opposite side (instant, no transition)
   slideClass.value = direction === 'next' ? 'slide-in-right-instant' : 'slide-in-left-instant'
@@ -242,6 +270,7 @@ function flattenToc(items, level = 0) {
 }
 
 function onKey(e) {
+  if (e.key === 'Escape')                              emit('close')
   if (e.key === 'ArrowRight' || e.key === 'PageDown') nextPage()
   if (e.key === 'ArrowLeft'  || e.key === 'PageUp')   prevPage()
 }
@@ -473,4 +502,55 @@ function wait(ms) { return new Promise(r => setTimeout(r, ms)) }
 
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* ── Cancel button (loading state) ───────────── */
+.cancel-btn {
+  margin-top: 4px;
+  padding: 6px 18px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px;
+  background: transparent;
+  color: #6b7280;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.cancel-btn:hover { background: rgba(255,255,255,0.06); color: #d1d5db; }
+
+/* ── Error state ─────────────────────────────── */
+.err-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #f3f4f6;
+  margin-top: 4px;
+}
+.err-msg {
+  font-size: 0.78rem;
+  color: #9ca3af;
+  text-align: center;
+  max-width: 320px;
+  line-height: 1.5;
+}
+.err-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+.err-btn {
+  padding: 7px 18px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: transparent;
+  color: #9ca3af;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.err-btn:hover { background: rgba(255,255,255,0.06); color: #f3f4f6; }
+.err-retry {
+  background: rgba(99,102,241,0.15);
+  border-color: rgba(99,102,241,0.4);
+  color: #818cf8;
+}
+.err-retry:hover { background: rgba(99,102,241,0.28); color: #a5b4fc; }
 </style>
