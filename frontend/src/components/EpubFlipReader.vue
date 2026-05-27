@@ -100,8 +100,9 @@ import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import ePub from 'epubjs'
 
 const props = defineProps({
-  url: { type: String, required: true },
-  bookTitle: { type: String, default: '' },
+  url:       { type: String,  required: true },
+  bookTitle: { type: String,  default: '' },
+  ebookId:   { type: Number,  default: null },
 })
 const emit = defineEmits(['close'])
 
@@ -120,8 +121,10 @@ const fontSize   = ref(100)
 const navigating = ref(false)
 const slideClass = ref('')
 
-let book    = null
+let book      = null
 let rendition = null
+let saveTimer = null
+let lastLoc   = null   // most-recent location, used to recalculate % after locations generate
 
 const SLIDE_MS = 280
 
@@ -140,6 +143,9 @@ watch(() => props.url, async () => {
 })
 
 function cleanup() {
+  clearTimeout(saveTimer)
+  saveTimer = null
+  lastLoc   = null
   if (rendition) { rendition.destroy(); rendition = null }
   if (book)      { book.destroy();      book = null }
   loading.value = true
@@ -171,10 +177,41 @@ async function initReader() {
 
     applyTheme()
 
+    // 'relocated' is the current event (locationChanged is deprecated and passes loc.start as a plain string)
+    rendition.on('relocated', loc => {
+      lastLoc = loc
+      let pct = null
+      try {
+        if (book?.locations?.length()) {
+          const raw = book.locations.percentageFromCfi(loc.start.cfi)
+          if (typeof raw === 'number' && !isNaN(raw)) {
+            pct = Math.round(raw * 100)
+            progress.value = pct
+          }
+        }
+      } catch (_) {}
+
+      if (props.ebookId && loc.start?.cfi) {
+        scheduleProgressSave(loc.start.cfi, pct)
+      }
+    })
+
+    // Fetch saved CFI before displaying
+    let startCfi = null
+    if (props.ebookId) {
+      try {
+        const r = await fetch(`/api/ebooks/${props.ebookId}/progress`)
+        if (r.ok) {
+          const p = await r.json()
+          if (p.cfi) startCfi = p.cfi
+        }
+      } catch (_) {}
+    }
+
     const timeout = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('Tempo limite excedido ao carregar o livro.')), LOAD_TIMEOUT_MS)
     )
-    await Promise.race([rendition.display(), timeout])
+    await Promise.race([rendition.display(startCfi ?? undefined), timeout])
 
     loading.value = false
 
@@ -185,23 +222,39 @@ async function initReader() {
       const nav = await book.navigation
       toc.value = flattenToc(nav?.toc || [])
 
-      book.locations.generate(1024)
+      // After locations generate, recalculate % and save with correct value
+      book.locations.generate(1024).then(() => {
+        if (!lastLoc?.start?.cfi) return
+        try {
+          const raw = book.locations.percentageFromCfi(lastLoc.start.cfi)
+          if (typeof raw === 'number' && !isNaN(raw)) {
+            const pct = Math.round(raw * 100)
+            progress.value = pct
+            if (props.ebookId) saveProgress(lastLoc.start.cfi, pct)
+          }
+        } catch (_) {}
+      }).catch(() => {})
     }).catch(err => console.warn('book.ready error:', err))
-
-    rendition.on('locationChanged', loc => {
-      try {
-        if (book?.locations?.length()) {
-          const pct = book.locations.percentageFromCfi(loc.start.cfi)
-          if (typeof pct === 'number' && !isNaN(pct)) progress.value = Math.round(pct * 100)
-        }
-      } catch (_) {}
-    })
 
   } catch (err) {
     console.error('epubjs error:', err)
     loading.value = false
     errorMsg.value = err?.message || 'Erro desconhecido ao abrir o arquivo EPUB.'
   }
+}
+
+function scheduleProgressSave(cfi, pct) {
+  clearTimeout(saveTimer)
+  saveTimer = setTimeout(() => saveProgress(cfi, pct ?? progress.value), 2000)
+}
+
+function saveProgress(cfi, percentage) {
+  if (!props.ebookId) return
+  fetch(`/api/ebooks/${props.ebookId}/progress`, {
+    method:  'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ cfi, percentage: percentage ?? 0 }),
+  }).catch(() => {})
 }
 
 // ── Slide animation ───────────────────────────────────────────────

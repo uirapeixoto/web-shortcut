@@ -4,8 +4,10 @@ import zipfile
 from datetime import datetime
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from fastapi.responses import FileResponse, Response
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from database import get_db, Ebook
+from database import get_db, Ebook, ReadingProgress
+from routes.auth import get_current_user
 
 CONTENT_TYPES = {
     "html":  "text/html; charset=utf-8",
@@ -127,7 +129,7 @@ def serve_epub_resource(ebook_id: int, resource_path: str, db: Session = Depends
 
 
 @router.delete("/{ebook_id}")
-def delete_ebook(ebook_id: int, db: Session = Depends(get_db)):
+def delete_ebook(ebook_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
     ebook = db.query(Ebook).filter(Ebook.id == ebook_id).first()
     if not ebook:
         raise HTTPException(status_code=404, detail="Ebook não encontrado")
@@ -135,5 +137,44 @@ def delete_ebook(ebook_id: int, db: Session = Depends(get_db)):
     if os.path.exists(file_path):
         os.remove(file_path)
     db.delete(ebook)
+    db.commit()
+    return {"ok": True}
+
+
+# ── Reading progress ──────────────────────────────────────────────────
+
+class ProgressIn(BaseModel):
+    cfi:        str
+    percentage: float
+
+
+@router.get("/progress")
+def get_all_progress(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    """Return {ebook_id: percentage} for all books that have progress."""
+    rows = db.query(ReadingProgress).all()
+    return {r.ebook_id: {"cfi": r.cfi, "percentage": r.percentage} for r in rows}
+
+
+@router.get("/{ebook_id}/progress")
+def get_progress(ebook_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    prog = db.query(ReadingProgress).filter(ReadingProgress.ebook_id == ebook_id).first()
+    if not prog:
+        return {"cfi": None, "percentage": 0.0}
+    return {"cfi": prog.cfi, "percentage": prog.percentage}
+
+
+@router.put("/{ebook_id}/progress")
+def update_progress(ebook_id: int, data: ProgressIn,
+                    db: Session = Depends(get_db), _=Depends(get_current_user)):
+    prog = db.query(ReadingProgress).filter(ReadingProgress.ebook_id == ebook_id).first()
+    now  = datetime.utcnow().isoformat()
+    if prog:
+        prog.cfi        = data.cfi
+        prog.percentage = data.percentage
+        prog.updated_at = now
+    else:
+        prog = ReadingProgress(ebook_id=ebook_id, cfi=data.cfi,
+                               percentage=data.percentage, updated_at=now)
+        db.add(prog)
     db.commit()
     return {"ok": True}

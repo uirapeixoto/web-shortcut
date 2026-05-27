@@ -6,7 +6,8 @@
         <EpubFlipReader
           :url="`/api/ebooks/${activeBook.id}/book.epub`"
           :book-title="activeBook.title"
-          @close="activeBook = null"
+          :ebook-id="activeBook.id"
+          @close="onCloseReader"
         />
       </div>
     </Transition>
@@ -82,6 +83,12 @@
           <div class="book-cover-art-face">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
           </div>
+          <div class="progress-badge" v-if="progressMap[book.id]?.percentage > 0">
+            {{ Math.round(progressMap[book.id].percentage) }}%
+          </div>
+          <div class="progress-strip" v-if="progressMap[book.id]?.percentage > 0">
+            <div class="progress-strip-fill" :style="{ width: progressMap[book.id].percentage + '%' }"></div>
+          </div>
         </div>
         <div class="book-info">
           <div class="book-title">{{ book.title }}</div>
@@ -114,16 +121,20 @@
 import { ref, onMounted } from 'vue'
 import EpubFlipReader from '../components/EpubFlipReader.vue'
 
-const books = ref([])
-const activeBook = ref(null)
-const fileInput = ref(null)
-const isDragging = ref(false)
+const books       = ref([])
+const activeBook  = ref(null)
+const progressMap = ref({})
+const fileInput   = ref(null)
+const isDragging  = ref(false)
 const isUploading = ref(false)
 const uploadProgress = ref(0)
-const isLoading = ref(true)
-const errorMsg = ref('')
+const isLoading   = ref(true)
+const errorMsg    = ref('')
 
-onMounted(fetchBooks)
+onMounted(async () => {
+  await fetchBooks()
+  await fetchProgress()
+})
 
 async function fetchBooks() {
   isLoading.value = true
@@ -135,6 +146,18 @@ async function fetchBooks() {
   } finally {
     isLoading.value = false
   }
+}
+
+async function fetchProgress() {
+  try {
+    const r = await fetch('/api/ebooks/progress')
+    if (r.ok) progressMap.value = await r.json()
+  } catch (_) {}
+}
+
+function onCloseReader() {
+  activeBook.value = null
+  fetchProgress()
 }
 
 function onDrop(e) {
@@ -465,6 +488,34 @@ function formatDate(iso) {
   gap: 12px;
 }
 .empty-state p { font-size: 0.95rem; margin: 0; }
+
+/* ─── Reading progress overlay ───────────────── */
+.progress-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+  backdrop-filter: blur(4px);
+}
+
+.progress-strip {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(0,0,0,0.25);
+}
+.progress-strip-fill {
+  height: 100%;
+  background: #a5b4fc;
+  transition: width 0.3s;
+}
 
 /* ─── Dark mode ──────────────────────────────── */
 @media (prefers-color-scheme: dark) {

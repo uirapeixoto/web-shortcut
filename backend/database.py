@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, Float, String, ForeignKey
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 
 DATABASE_URL = "sqlite:///./data/shortcuts.db"
@@ -39,6 +39,18 @@ class Ebook(Base):
     original_name = Column(String, nullable=False)
     size = Column(Integer, default=0)
     created_at = Column(String, default="")
+    progress = relationship("ReadingProgress", back_populates="ebook",
+                            cascade="all, delete", uselist=False)
+
+
+class ReadingProgress(Base):
+    __tablename__ = "reading_progress"
+    id         = Column(Integer, primary_key=True, index=True)
+    ebook_id   = Column(Integer, ForeignKey("ebooks.id"), unique=True, nullable=False)
+    cfi        = Column(String, default="")    # epubjs CFI — exact resume position
+    percentage = Column(Float,  default=0.0)  # 0–100
+    updated_at = Column(String, default="")
+    ebook      = relationship("Ebook", back_populates="progress")
 
 
 def get_db():

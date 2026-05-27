@@ -32,6 +32,26 @@
 
       <button
         class="side-item md-open-btn"
+        :class="{ active: schedOpen }"
+        @click="schedOpen = !schedOpen"
+        :title="store.sideOpen ? 'Ctrl+A' : 'Agendador (Ctrl+A)'"
+      >
+        <span class="side-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+            <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
+            <line x1="3" y1="10" x2="21" y2="10"/>
+          </svg>
+        </span>
+        <span class="side-label" v-if="store.sideOpen">
+          Agendador
+          <kbd class="md-kbd">Ctrl A</kbd>
+        </span>
+        <span v-if="schedulerStore.activeAlarms.length > 0" class="alarm-dot"></span>
+      </button>
+
+      <button
+        class="side-item md-open-btn"
         :class="{ active: kanbanOpen }"
         @click="kanbanOpen = !kanbanOpen"
         :title="store.sideOpen ? 'Ctrl+K' : 'Kanban (Ctrl+K)'"
@@ -71,6 +91,7 @@
       </button>
     </div>
 
+    <TaskScheduler v-model:open="schedOpen" />
     <KanbanBoard v-model:open="kanbanOpen" />
     <MarkdownEditor v-model:open="mdOpen" />
   </aside>
@@ -79,12 +100,16 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useStore } from '../store/index.js'
+import { useSchedulerStore } from '../store/scheduler.js'
 import MarkdownEditor from './MarkdownEditor.vue'
 import KanbanBoard from './KanbanBoard.vue'
+import TaskScheduler from './TaskScheduler.vue'
 
 const store = useStore()
+const schedulerStore = useSchedulerStore()
 const mdOpen = ref(false)
 const kanbanOpen = ref(false)
+const schedOpen = ref(false)
 
 function maybeClose() {
   if (window.innerWidth < 768) store.sideOpen = false
@@ -94,7 +119,25 @@ function onKeydown(e) {
   if (!(e.ctrlKey || e.metaKey)) return
   if (e.key === 'm') { e.preventDefault(); mdOpen.value = !mdOpen.value }
   if (e.key === 'k') { e.preventDefault(); kanbanOpen.value = !kanbanOpen.value }
+  if (e.key === 'a') { e.preventDefault(); schedOpen.value = !schedOpen.value }
 }
 onMounted(() => window.addEventListener('keydown', onKeydown))
 onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 </script>
+
+<style scoped>
+.md-open-btn { position: relative; }
+
+.alarm-dot {
+  position: absolute;
+  top: 6px; right: 6px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+  animation: dot-pulse 1.2s ease-in-out infinite;
+}
+@keyframes dot-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(1.3); }
+}
+</style>

@@ -1,114 +1,147 @@
 # Web Shortcut Manager
 
-Painel pessoal para organizar e acessar links e atalhos web com rapidez. Interface dark moderna com categorias, editor Markdown e quadro Kanban integrados.
-
-## Visão geral
+Painel pessoal de produtividade — organize links, leia EPUBs, escreva em Markdown, gerencie tarefas no Kanban e receba alertas de compromissos, tudo em um único lugar.
 
 ```
 web-shortcut/
-├── backend/        # API REST — FastAPI + SQLAlchemy + SQLite
-├── frontend/       # SPA — Vue 3 + Vite + Pinia
+├── backend/          # API REST — FastAPI + SQLAlchemy + SQLite
+├── frontend/         # SPA — Vue 3 + Vite + Pinia
+├── docs/             # Documentação técnica (SDD + PRs)
 └── docker-compose.yml
 ```
 
-A comunicação entre frontend e backend é feita via proxy Nginx — todas as chamadas para `/api/*` são encaminhadas internamente para o serviço `backend:8000`, sem expor a API diretamente.
+---
 
 ## Funcionalidades
 
-- **Atalhos** — cadastro, edição e remoção de links organizados por categorias com ícone e cor personalizados
-- **Categorias** — criação e gestão de categorias com ícone emoji e cor de destaque
-- **Admin** — painel para gerenciar categorias e atalhos via tabelas editáveis
-- **Editor Markdown** — editor/leitor com suporte a diagramas Mermaid, split view, persistência no localStorage e atalho `Ctrl+M`
-- **Kanban** — quadro estilo Trello com drag & drop, checklists, etiquetas e persistência no localStorage; atalho `Ctrl+K`
+| Módulo | Descrição | Atalho |
+|---|---|---|
+| **Atalhos** | Cadastro de links com categoria, ícone e cor | — |
+| **Admin** | Painel CRUD para categorias e atalhos | — |
+| **Editor Markdown** | Editor/leitor com Mermaid, split view e localStorage | `Ctrl+M` |
+| **Kanban** | Quadro drag & drop com checklists e etiquetas | `Ctrl+K` |
+| **Biblioteca EPUB** | Upload e leitura de livros `.epub` com slide horizontal | — |
+| **Agendador** | Tarefas com alarme sonoro, notificações push e soneca | `Ctrl+A` |
 
-## Tecnologias
+---
 
-| Camada | Stack |
+## Stack
+
+| Camada | Tecnologia |
 |---|---|
-| Frontend | Vue 3 · Vite · Pinia · Vue Router |
-| Backend | FastAPI · SQLAlchemy · Pydantic v2 |
-| Banco de dados | SQLite (arquivo persistido em volume Docker) |
-| Servidor | Nginx (proxy reverso + SPA) |
-| Infra | Docker · Docker Compose |
+| Frontend | Vue 3 · Vite · Pinia · Vue Router · epubjs |
+| Backend | FastAPI · SQLAlchemy · Pydantic v2 · Python 3.12 |
+| Banco | SQLite (volume Docker persistido) |
+| Infra | Nginx (proxy + SPA) · Docker Compose |
 
-## Pré-requisitos
+---
 
-- [Docker](https://docs.docker.com/get-docker/) e Docker Compose v2+
-- **Ou**, para desenvolvimento local: Node.js 20+ e Python 3.12+
-
-## Rodando com Docker (recomendado)
+## Rodando com Docker
 
 ```bash
-git clone <url-do-repositorio>
+git clone <url>
 cd web-shortcut
-
 docker compose up --build
 ```
 
-A aplicação estará disponível em **http://localhost:3000**.
-
-O banco de dados SQLite é armazenado em um volume Docker nomeado (`db-data`) e sobrevive a reinicializações do container.
-
-Para parar:
+Disponível em **http://localhost:3000**.
 
 ```bash
-docker compose down
-```
-
-Para apagar também os dados do banco:
-
-```bash
-docker compose down -v
+docker compose down        # para
+docker compose down -v     # para + apaga dados
 ```
 
 ## Desenvolvimento local
 
-### Backend
-
+**Backend**
 ```bash
 cd backend
-python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app:app --reload --port 8000
+uvicorn app:app --reload --port 8001
 ```
+Swagger: `http://localhost:8001/docs`
 
-API disponível em `http://localhost:8000`.
-Documentação interativa: `http://localhost:8000/docs`.
-
-### Frontend
-
+**Frontend**
 ```bash
 cd frontend
 npm install
-npm run dev
+npm run dev        # http://localhost:5173
 ```
 
-Interface disponível em `http://localhost:5173`.
+---
 
-O Vite está configurado para fazer proxy de `/api` → `http://backend:8000` em desenvolvimento.
-
-## API — endpoints principais
+## API — referência rápida
 
 | Método | Rota | Descrição |
 |---|---|---|
-| `GET` | `/categories/` | Lista todas as categorias |
-| `POST` | `/categories/` | Cria uma categoria |
-| `PUT` | `/categories/{id}` | Atualiza uma categoria |
-| `DELETE` | `/categories/{id}` | Remove uma categoria (e seus atalhos) |
-| `GET` | `/shortcuts/` | Lista atalhos (aceita `?category_id=N`) |
-| `POST` | `/shortcuts/` | Cria um atalho |
-| `PUT` | `/shortcuts/{id}` | Atualiza um atalho |
-| `DELETE` | `/shortcuts/{id}` | Remove um atalho |
+| `GET` | `/categories/` | Lista categorias |
+| `POST` | `/categories/` | Cria categoria |
+| `PUT` | `/categories/{id}` | Atualiza categoria |
+| `DELETE` | `/categories/{id}` | Remove categoria e atalhos |
+| `GET` | `/shortcuts/` | Lista atalhos (`?category_id=N`) |
+| `POST` | `/shortcuts/` | Cria atalho |
+| `PUT` | `/shortcuts/{id}` | Atualiza atalho |
+| `DELETE` | `/shortcuts/{id}` | Remove atalho |
+| `GET` | `/ebooks/` | Lista livros |
+| `POST` | `/ebooks/upload` | Upload de `.epub` |
+| `GET` | `/ebooks/{id}/book.epub` | Serve o arquivo epub |
+| `DELETE` | `/ebooks/{id}` | Remove livro e arquivo |
 
-## Estrutura do banco de dados
+---
+
+## Documentação técnica
+
+| Documento | Descrição |
+|---|---|
+| [`docs/SDD.md`](docs/SDD.md) | Software Design Document — arquitetura, modelos, decisões |
+| [`docs/PR-001-shortcuts-categories.md`](docs/PR-001-shortcuts-categories.md) | PR: Atalhos e categorias |
+| [`docs/PR-002-markdown-editor.md`](docs/PR-002-markdown-editor.md) | PR: Editor Markdown + Mermaid |
+| [`docs/PR-003-kanban-board.md`](docs/PR-003-kanban-board.md) | PR: Quadro Kanban |
+| [`docs/PR-004-epub-reader.md`](docs/PR-004-epub-reader.md) | PR: Biblioteca e leitor EPUB |
+| [`docs/PR-005-task-scheduler.md`](docs/PR-005-task-scheduler.md) | PR: Agendador com alarmes |
+| [`docs/PR-006-admin-panel.md`](docs/PR-006-admin-panel.md) | PR: Painel administrativo |
+
+---
+
+## Estrutura de arquivos
 
 ```
-categories
-  id, name, icon, color, order
+backend/
+├── app.py               # Ponto de entrada FastAPI
+├── database.py          # Modelos SQLAlchemy + init_db
+├── requirements.txt
+├── routes/
+│   ├── categories.py    # CRUD categorias
+│   ├── shortcuts.py     # CRUD atalhos
+│   └── ebooks.py        # Upload/serve EPUBs
+├── data/                # shortcuts.db (gerado em runtime)
+└── upload/ebook/epub/   # EPUBs enviados (gerado em runtime)
 
-shortcuts
-  id, name, url, description, icon, color, order, category_id → categories.id
+frontend/src/
+├── App.vue              # Root: layout + inicialização do scheduler
+├── main.js
+├── style.css
+├── router/index.js
+├── store/
+│   ├── index.js         # Categorias e atalhos (API)
+│   └── scheduler.js     # Agendador (localStorage)
+├── composables/
+│   └── useAlarmSound.js # Geração de alarme via Web Audio API
+├── components/
+│   ├── TopMenu.vue
+│   ├── SideMenu.vue
+│   ├── ShortcutCard.vue
+│   ├── MarkdownEditor.vue
+│   ├── KanbanBoard.vue
+│   ├── EpubFlipReader.vue
+│   ├── TaskScheduler.vue
+│   └── TaskAlarm.vue
+└── views/
+    ├── Landing.vue
+    ├── Shortcuts.vue
+    ├── Admin.vue
+    └── Ebooks.vue
 ```
 
 ## Atalhos de teclado
@@ -117,4 +150,6 @@ shortcuts
 |---|---|
 | `Ctrl+M` | Abre / fecha o Editor Markdown |
 | `Ctrl+K` | Abre / fecha o Kanban |
-| `Esc` | Fecha o painel ativo |
+| `Ctrl+A` | Abre / fecha o Agendador |
+| `Esc` | Fecha o painel ativo / cancela carregamento |
+| `← →` | Navega páginas no leitor EPUB |
