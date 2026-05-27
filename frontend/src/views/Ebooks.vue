@@ -83,11 +83,12 @@
           <div class="book-cover-art-face">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
           </div>
-          <div class="progress-badge" v-if="progressMap[book.id]?.percentage > 0">
-            {{ Math.round(progressMap[book.id].percentage) }}%
-          </div>
-          <div class="progress-strip" v-if="progressMap[book.id]?.percentage > 0">
-            <div class="progress-strip-fill" :style="{ width: progressMap[book.id].percentage + '%' }"></div>
+          <div class="progress-overlay" v-if="progressMap[book.id]?.percentage > 0">
+            <span class="progress-overlay-pct">{{ Math.round(progressMap[book.id].percentage) }}%</span>
+            <span class="progress-overlay-label">lido</span>
+            <div class="progress-overlay-bar">
+              <div class="progress-overlay-fill" :style="{ width: progressMap[book.id].percentage + '%' }"></div>
+            </div>
           </div>
         </div>
         <div class="book-info">
@@ -490,30 +491,50 @@ function formatDate(iso) {
 .empty-state p { font-size: 0.95rem; margin: 0; }
 
 /* ─── Reading progress overlay ───────────────── */
-.progress-badge {
+.progress-overlay {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  background: rgba(0,0,0,0.55);
-  color: #fff;
-  font-size: 0.68rem;
-  font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 10px;
-  backdrop-filter: blur(4px);
+  inset: 0;
+  background: rgba(0, 0, 0, 0.52);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  backdrop-filter: blur(2px);
+  border-radius: inherit;
 }
 
-.progress-strip {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: rgba(0,0,0,0.25);
+.progress-overlay-pct {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.4);
 }
-.progress-strip-fill {
+
+.progress-overlay-label {
+  font-size: 0.62rem;
+  color: rgba(255, 255, 255, 0.65);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.progress-overlay-bar {
+  width: 60%;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.progress-overlay-fill {
   height: 100%;
   background: #a5b4fc;
+  border-radius: 2px;
   transition: width 0.3s;
 }
 
