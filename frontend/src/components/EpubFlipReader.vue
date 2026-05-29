@@ -79,13 +79,15 @@
           ></div>
         </div>
 
-        <!-- Nav buttons -->
-        <button class="nav-btn nav-prev" @click="prevPage" :disabled="navigating" title="Anterior (←)">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
-        </button>
-        <button class="nav-btn nav-next" @click="nextPage" :disabled="navigating" title="Próxima (→)">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
-        </button>
+        <!-- Tap zones + swipe overlay -->
+        <div
+          class="interaction-overlay"
+          @touchstart.passive="onTouchStart"
+          @touchend="onTouchEnd"
+        >
+          <div class="tap-zone tap-zone--prev" @click.stop="prevPage" aria-label="Página anterior"></div>
+          <div class="tap-zone tap-zone--next" @click.stop="nextPage" aria-label="Próxima página"></div>
+        </div>
 
       </div>
     </div>
@@ -168,7 +170,13 @@ let rendition = null
 let saveTimer = null
 let lastLoc   = null
 
-const FLIP_MS = 500   // must match CSS transition duration
+const FLIP_MS        = 500  // must match CSS transition duration
+const SWIPE_MIN_PX   = 50   // minimum horizontal distance for a swipe
+const TAP_MAX_MOVE   = 18   // maximum movement to still count as a tap
+
+let touchStartX    = 0
+let touchStartY    = 0
+let touchStartTime = 0
 
 onMounted(async () => {
   await nextTick()
@@ -384,6 +392,39 @@ function onKey(e) {
   if (e.key === 'Escape')                              emit('close')
   if (e.key === 'ArrowRight' || e.key === 'PageDown') nextPage()
   if (e.key === 'ArrowLeft'  || e.key === 'PageUp')   prevPage()
+}
+
+function onTouchStart(e) {
+  const t = e.touches[0]
+  touchStartX    = t.clientX
+  touchStartY    = t.clientY
+  touchStartTime = Date.now()
+}
+
+function onTouchEnd(e) {
+  e.preventDefault()
+  if (navigating.value) return
+
+  const t    = e.changedTouches[0]
+  const dx   = t.clientX - touchStartX
+  const dy   = t.clientY - touchStartY
+  const dt   = Date.now() - touchStartTime
+  const absDx = Math.abs(dx)
+  const absDy = Math.abs(dy)
+
+  // Swipe: enough horizontal movement, mostly horizontal, quick enough
+  if (absDx >= SWIPE_MIN_PX && absDx > absDy * 1.2 && dt < 700) {
+    dx < 0 ? nextPage() : prevPage()
+    return
+  }
+
+  // Tap: minimal movement — use x position to decide direction
+  if (absDx < TAP_MAX_MOVE && absDy < TAP_MAX_MOVE) {
+    const rect  = e.currentTarget.getBoundingClientRect()
+    const ratio = (touchStartX - rect.left) / rect.width
+    if (ratio < 0.3)      prevPage()
+    else if (ratio > 0.7) nextPage()
+  }
 }
 
 function wait(ms) { return new Promise(r => setTimeout(r, ms)) }
@@ -655,29 +696,48 @@ function wait(ms) { return new Promise(r => setTimeout(r, ms)) }
   opacity: 1;
 }
 
-/* ── Nav buttons ─────────────────────────────── */
-.nav-btn {
+/* ── Interaction overlay (tap zones + swipe) ─── */
+.interaction-overlay {
   position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(0,0,0,0.12);
-  color: #374151;
-  cursor: pointer;
+  inset: 0;
+  z-index: 20;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.2s, color 0.2s, transform 0.2s;
-  z-index: 30;
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
 }
-.theme-dark .nav-btn { background: rgba(255,255,255,0.08); color: #9ca3af; }
-.nav-btn:hover:not(:disabled) { background: rgba(99,102,241,0.2); color: #6366f1; transform: translateY(-50%) scale(1.1); }
-.nav-btn:disabled { opacity: 0.2; cursor: default; }
-.nav-prev { left: 8px; }
-.nav-next { right: 8px; }
+
+.tap-zone {
+  height: 100%;
+  width: 28%;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* Subtle gradient hint that appears on desktop hover */
+.tap-zone--prev {
+  background: transparent;
+  transition: background 0.2s;
+}
+.tap-zone--prev:hover {
+  background: linear-gradient(to right, rgba(99,102,241,0.07) 0%, transparent 100%);
+}
+
+.tap-zone--next {
+  margin-left: auto;
+  background: transparent;
+  transition: background 0.2s;
+}
+.tap-zone--next:hover {
+  background: linear-gradient(to left, rgba(99,102,241,0.07) 0%, transparent 100%);
+}
+
+/* Touch devices: no hover effect */
+@media (hover: none) {
+  .tap-zone--prev:hover,
+  .tap-zone--next:hover { background: transparent; }
+}
 
 /* ── Footer ──────────────────────────────────── */
 .reader-footer {
