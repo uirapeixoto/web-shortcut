@@ -79,15 +79,21 @@
           ></div>
         </div>
 
-        <!-- Tap zones + swipe overlay -->
+        <!-- Edge tap zones: only the outer margins, center is free for text selection -->
         <div
-          class="interaction-overlay"
+          class="tap-zone tap-zone--prev"
+          @click.stop="prevPage"
           @touchstart.passive="onTouchStart"
-          @touchend="onTouchEnd"
-        >
-          <div class="tap-zone tap-zone--prev" @click.stop="prevPage" aria-label="Página anterior"></div>
-          <div class="tap-zone tap-zone--next" @click.stop="nextPage" aria-label="Próxima página"></div>
-        </div>
+          @touchend="onTouchEndPrev"
+          aria-label="Página anterior"
+        ></div>
+        <div
+          class="tap-zone tap-zone--next"
+          @click.stop="nextPage"
+          @touchstart.passive="onTouchStart"
+          @touchend="onTouchEndNext"
+          aria-label="Próxima página"
+        ></div>
 
       </div>
     </div>
@@ -401,31 +407,26 @@ function onTouchStart(e) {
   touchStartTime = Date.now()
 }
 
-function onTouchEnd(e) {
+function handleTouchEnd(e, tapAction) {
   e.preventDefault()
   if (navigating.value) return
-
-  const t    = e.changedTouches[0]
-  const dx   = t.clientX - touchStartX
-  const dy   = t.clientY - touchStartY
-  const dt   = Date.now() - touchStartTime
+  const t     = e.changedTouches[0]
+  const dx    = t.clientX - touchStartX
+  const dy    = t.clientY - touchStartY
+  const dt    = Date.now() - touchStartTime
   const absDx = Math.abs(dx)
   const absDy = Math.abs(dy)
-
-  // Swipe: enough horizontal movement, mostly horizontal, quick enough
+  // Swipe: sufficient horizontal distance, mostly horizontal, quick
   if (absDx >= SWIPE_MIN_PX && absDx > absDy * 1.2 && dt < 700) {
     dx < 0 ? nextPage() : prevPage()
     return
   }
-
-  // Tap: minimal movement — use x position to decide direction
-  if (absDx < TAP_MAX_MOVE && absDy < TAP_MAX_MOVE) {
-    const rect  = e.currentTarget.getBoundingClientRect()
-    const ratio = (touchStartX - rect.left) / rect.width
-    if (ratio < 0.3)      prevPage()
-    else if (ratio > 0.7) nextPage()
-  }
+  // Tap: minimal movement → use the zone's own direction
+  if (absDx < TAP_MAX_MOVE && absDy < TAP_MAX_MOVE) tapAction()
 }
+
+const onTouchEndPrev = (e) => handleTouchEnd(e, prevPage)
+const onTouchEndNext = (e) => handleTouchEnd(e, nextPage)
 
 function wait(ms) { return new Promise(r => setTimeout(r, ms)) }
 </script>
@@ -696,44 +697,38 @@ function wait(ms) { return new Promise(r => setTimeout(r, ms)) }
   opacity: 1;
 }
 
-/* ── Interaction overlay (tap zones + swipe) ─── */
-.interaction-overlay {
+/* ── Edge tap zones ───────────────────────────── */
+/* Only the outer margins — center is transparent so the epub iframe
+   receives pointer events for text selection and link clicks.         */
+.tap-zone {
   position: absolute;
-  inset: 0;
+  top: 0;
+  bottom: 0;
+  /* clamp: at least 44px touch target, grows with screen, max 64px */
+  width: clamp(44px, 6%, 64px);
   z-index: 20;
-  display: flex;
+  cursor: pointer;
   pointer-events: auto;
   user-select: none;
   -webkit-user-select: none;
+  transition: background 0.2s;
 }
 
-.tap-zone {
-  height: 100%;
-  width: 28%;
-  cursor: pointer;
-  position: relative;
-  flex-shrink: 0;
-}
-
-/* Subtle gradient hint that appears on desktop hover */
 .tap-zone--prev {
-  background: transparent;
-  transition: background 0.2s;
+  left: 0;
 }
-.tap-zone--prev:hover {
-  background: linear-gradient(to right, rgba(99,102,241,0.07) 0%, transparent 100%);
+.tap-zone--next {
+  right: 0;
 }
 
-.tap-zone--next {
-  margin-left: auto;
-  background: transparent;
-  transition: background 0.2s;
+/* Subtle gradient hint on hover (desktop only) */
+.tap-zone--prev:hover {
+  background: linear-gradient(to right, rgba(99,102,241,0.09) 0%, transparent 100%);
 }
 .tap-zone--next:hover {
-  background: linear-gradient(to left, rgba(99,102,241,0.07) 0%, transparent 100%);
+  background: linear-gradient(to left, rgba(99,102,241,0.09) 0%, transparent 100%);
 }
 
-/* Touch devices: no hover effect */
 @media (hover: none) {
   .tap-zone--prev:hover,
   .tap-zone--next:hover { background: transparent; }
