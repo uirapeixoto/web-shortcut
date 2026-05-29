@@ -44,13 +44,39 @@
       <!-- Content area -->
       <div class="content-area">
 
-        <!-- Slide wrapper: this element slides on navigation -->
-        <div
-          class="slide-wrapper"
-          :class="slideClass"
-          ref="slideWrapperEl"
-        >
-          <div class="epub-mount" ref="epubMount"></div>
+        <!-- Page flip book -->
+        <div class="flip-book" ref="flipBook">
+          <!-- Main content: always present -->
+          <div class="page-layer page-main" ref="pageMainEl">
+            <div class="epub-mount" ref="epubMount"></div>
+          </div>
+
+          <!-- Flip card: animated overlay during page turn -->
+          <div
+            v-if="flipping"
+            class="page-layer flip-card"
+            :class="[flipDir, { 'flip-card--turning': flipTurning }]"
+          >
+            <!-- Front (leaving page) -->
+            <div class="flip-face flip-face--front">
+              <div class="page-bg" :class="{ dark: isDark }"></div>
+              <div class="page-lines" :class="{ dark: isDark }"></div>
+              <div class="flip-edge-shadow flip-edge-shadow--right"></div>
+            </div>
+            <!-- Back (arriving page, seen when card is flipped over) -->
+            <div class="flip-face flip-face--back">
+              <div class="page-bg" :class="{ dark: isDark }"></div>
+              <div class="page-lines" :class="{ dark: isDark }"></div>
+              <div class="flip-edge-shadow flip-edge-shadow--left"></div>
+            </div>
+          </div>
+
+          <!-- Shadow cast on the static page underneath -->
+          <div
+            v-if="flipping"
+            class="flip-cast-shadow"
+            :class="[flipDir, { 'flip-cast-shadow--spreading': flipTurning }]"
+          ></div>
         </div>
 
         <!-- Nav buttons -->
@@ -66,10 +92,17 @@
 
     <!-- Footer -->
     <div class="reader-footer">
-      <span class="progress-pct">{{ Math.round(progress) }}%</span>
+      <div class="footer-left">
+        <span class="page-info" v-if="currentPage > 0">
+          <span class="page-label">Pág.</span>
+          <strong class="page-num">{{ currentPage }}</strong>
+          <span class="page-total" v-if="totalPages > 0"> / {{ totalPages }}</span>
+        </span>
+      </div>
       <div class="progress-track">
         <div class="progress-fill" :style="{ width: progress + '%' }"></div>
       </div>
+      <span class="progress-pct">{{ Math.round(progress) }}%</span>
     </div>
 
     <!-- Loading / Error overlay -->
@@ -106,27 +139,36 @@ const props = defineProps({
 })
 const emit = defineEmits(['close'])
 
-const readerRoot   = ref(null)
-const epubMount    = ref(null)
-const slideWrapperEl = ref(null)
+const readerRoot  = ref(null)
+const epubMount   = ref(null)
+const flipBook    = ref(null)
+const pageMainEl  = ref(null)
 
-const title      = ref('')
-const toc        = ref([])
-const showToc    = ref(false)
-const progress   = ref(0)
-const loading    = ref(true)
-const errorMsg   = ref('')
-const isDark     = ref(false)
-const fontSize   = ref(100)
-const navigating = ref(false)
-const slideClass = ref('')
+const title       = ref('')
+const toc         = ref([])
+const showToc     = ref(false)
+const progress    = ref(0)
+const loading     = ref(true)
+const errorMsg    = ref('')
+const isDark      = ref(false)
+const fontSize    = ref(100)
+const navigating  = ref(false)
+
+// Flip state
+const flipping    = ref(false)
+const flipTurning = ref(false)  // triggers CSS transition
+const flipDir     = ref('flip-next')
+
+// Page numbers
+const currentPage = ref(0)
+const totalPages  = ref(0)
 
 let book      = null
 let rendition = null
 let saveTimer = null
-let lastLoc   = null   // most-recent location, used to recalculate % after locations generate
+let lastLoc   = null
 
-const SLIDE_MS = 280
+const FLIP_MS = 500   // must match CSS transition duration
 
 onMounted(async () => {
   await nextTick()
@@ -148,8 +190,10 @@ function cleanup() {
   lastLoc   = null
   if (rendition) { rendition.destroy(); rendition = null }
   if (book)      { book.destroy();      book = null }
-  loading.value = true
-  errorMsg.value = ''
+  loading.value    = true
+  errorMsg.value   = ''
+  currentPage.value = 0
+  totalPages.value  = 0
 }
 
 async function retryLoad() {
@@ -177,9 +221,13 @@ async function initReader() {
 
     applyTheme()
 
-    // 'relocated' is the current event (locationChanged is deprecated and passes loc.start as a plain string)
     rendition.on('relocated', loc => {
       lastLoc = loc
+
+      if (loc.start?.index !== undefined) {
+        currentPage.value = (loc.start.index ?? 0) + 1
+      }
+
       let pct = null
       try {
         if (book?.locations?.length()) {
@@ -196,7 +244,6 @@ async function initReader() {
       }
     })
 
-    // Fetch saved CFI before displaying
     let startCfi = null
     if (props.ebookId) {
       try {
@@ -222,7 +269,11 @@ async function initReader() {
       const nav = await book.navigation
       toc.value = flattenToc(nav?.toc || [])
 
-      // After locations generate, recalculate % and save with correct value
+      try {
+        const spineLen = book.spine?.items?.length ?? 0
+        if (spineLen > 0) totalPages.value = spineLen
+      } catch (_) {}
+
       book.locations.generate(1024).then(() => {
         if (!lastLoc?.start?.cfi) return
         try {
@@ -230,6 +281,11 @@ async function initReader() {
           if (typeof raw === 'number' && !isNaN(raw)) {
             const pct = Math.round(raw * 100)
             progress.value = pct
+            const total = book.locations.length()
+            if (total > 0) totalPages.value = total
+            if (lastLoc.start?.index !== undefined) {
+              currentPage.value = (lastLoc.start.index ?? 0) + 1
+            }
             if (props.ebookId) saveProgress(lastLoc.start.cfi, pct)
           }
         } catch (_) {}
@@ -257,35 +313,37 @@ function saveProgress(cfi, percentage) {
   }).catch(() => {})
 }
 
-// ── Slide animation ───────────────────────────────────────────────
-async function slide(direction) {
+// ── Page flip animation ───────────────────────────────────────────
+async function flipPage(direction) {
   if (navigating.value || !rendition) return
   navigating.value = true
 
-  // Phase 1: slide current page out
-  slideClass.value = direction === 'next' ? 'slide-out-left' : 'slide-out-right'
-  await wait(SLIDE_MS)
+  flipDir.value     = direction === 'next' ? 'flip-next' : 'flip-prev'
+  flipping.value    = true
+  flipTurning.value = false
 
-  // Navigate (epubjs renders new content while iframe is "off screen")
+  // Let the flip card mount, then start the turn
+  await nextTick()
+  await wait(16)
+  flipTurning.value = true
+
+  // Halfway through the flip: navigate while card is edge-on (invisible)
+  await wait(FLIP_MS / 2)
   try {
     if (direction === 'next') await rendition.next()
     else                      await rendition.prev()
   } catch (_) {}
 
-  // Phase 2: position the incoming page on the opposite side (instant, no transition)
-  slideClass.value = direction === 'next' ? 'slide-in-right-instant' : 'slide-in-left-instant'
-  await nextTick()
+  // Wait for the second half to complete
+  await wait(FLIP_MS / 2)
 
-  // Phase 3: slide new page in
-  slideClass.value = direction === 'next' ? 'slide-in-right' : 'slide-in-left'
-  await wait(SLIDE_MS)
-
-  slideClass.value = ''
-  navigating.value = false
+  flipping.value    = false
+  flipTurning.value = false
+  navigating.value  = false
 }
 
-async function nextPage() { await slide('next') }
-async function prevPage() { await slide('prev') }
+async function nextPage() { await flipPage('next') }
+async function prevPage()  { await flipPage('prev') }
 
 async function gotoToc(item) {
   showToc.value = false
@@ -448,20 +506,25 @@ function wait(ms) { return new Promise(r => setTimeout(r, ms)) }
   overflow: hidden;
 }
 
-/* ── Slide wrapper ───────────────────────────── */
-.slide-wrapper {
+/* ── Flip book container ─────────────────────── */
+.flip-book {
   width: 100%;
   height: 100%;
-  will-change: transform;
+  position: relative;
+  perspective: 2000px;
 }
 
-/* Transitions */
-.slide-wrapper.slide-out-left  { transition: transform 0.28s ease-in;  transform: translateX(-100%); }
-.slide-wrapper.slide-out-right { transition: transform 0.28s ease-in;  transform: translateX(100%);  }
-.slide-wrapper.slide-in-right-instant { transition: none; transform: translateX(100%);  }
-.slide-wrapper.slide-in-left-instant  { transition: none; transform: translateX(-100%); }
-.slide-wrapper.slide-in-right  { transition: transform 0.28s ease-out; transform: translateX(0); }
-.slide-wrapper.slide-in-left   { transition: transform 0.28s ease-out; transform: translateX(0); }
+/* ── Page layers ─────────────────────────────── */
+.page-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.page-main {
+  z-index: 1;
+}
 
 /* ── EPUB iframe ─────────────────────────────── */
 .epub-mount {
@@ -473,6 +536,123 @@ function wait(ms) { return new Promise(r => setTimeout(r, ms)) }
   height: 100% !important;
   border: none;
   display: block;
+}
+
+/* ── Flip card (the 3-D turning page) ────────── */
+.flip-card {
+  z-index: 10;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+
+/* Next: rotates around left edge (page peels left) */
+.flip-card.flip-next {
+  transform-origin: left center;
+  transform: rotateY(0deg);
+}
+.flip-card.flip-next.flip-card--turning {
+  transition: transform 0.5s cubic-bezier(0.645, 0.045, 0.355, 1.000);
+  transform: rotateY(-180deg);
+}
+
+/* Prev: rotates around right edge (page peels right) */
+.flip-card.flip-prev {
+  transform-origin: right center;
+  transform: rotateY(0deg);
+}
+.flip-card.flip-prev.flip-card--turning {
+  transition: transform 0.5s cubic-bezier(0.645, 0.045, 0.355, 1.000);
+  transform: rotateY(180deg);
+}
+
+/* ── Flip faces ──────────────────────────────── */
+.flip-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  overflow: hidden;
+}
+
+.flip-face--front {
+  transform: rotateY(0deg);
+}
+
+.flip-face--back {
+  transform: rotateY(180deg);
+}
+
+/* Page background fill */
+.page-bg {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+}
+.page-bg.dark {
+  background: #1e1e2e;
+}
+
+/* Simulated text lines on the flip card faces */
+.page-lines {
+  position: absolute;
+  inset: 40px 60px;
+  background-image:
+    repeating-linear-gradient(
+      to bottom,
+      transparent,
+      transparent 24px,
+      rgba(0,0,0,0.065) 24px,
+      rgba(0,0,0,0.065) 25px
+    );
+}
+.page-lines.dark {
+  background-image:
+    repeating-linear-gradient(
+      to bottom,
+      transparent,
+      transparent 24px,
+      rgba(255,255,255,0.06) 24px,
+      rgba(255,255,255,0.06) 25px
+    );
+}
+
+/* Edge shadow on front face (right side) */
+.flip-edge-shadow--right {
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  width: 28px;
+  background: linear-gradient(to right, transparent, rgba(0,0,0,0.18));
+  pointer-events: none;
+}
+
+/* Edge shadow on back face (left side, mirrored) */
+.flip-edge-shadow--left {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: 28px;
+  background: linear-gradient(to left, transparent, rgba(0,0,0,0.18));
+  pointer-events: none;
+}
+
+/* ── Cast shadow on the static page ─────────── */
+.flip-cast-shadow {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+.flip-cast-shadow.flip-next {
+  background: linear-gradient(to right, rgba(0,0,0,0.22) 0%, transparent 60%);
+}
+.flip-cast-shadow.flip-prev {
+  background: linear-gradient(to left, rgba(0,0,0,0.22) 0%, transparent 60%);
+}
+
+.flip-cast-shadow.flip-cast-shadow--spreading {
+  opacity: 1;
 }
 
 /* ── Nav buttons ─────────────────────────────── */
@@ -491,7 +671,7 @@ function wait(ms) { return new Promise(r => setTimeout(r, ms)) }
   align-items: center;
   justify-content: center;
   transition: background 0.2s, color 0.2s, transform 0.2s;
-  z-index: 10;
+  z-index: 30;
 }
 .theme-dark .nav-btn { background: rgba(255,255,255,0.08); color: #9ca3af; }
 .nav-btn:hover:not(:disabled) { background: rgba(99,102,241,0.2); color: #6366f1; transform: translateY(-50%) scale(1.1); }
@@ -509,12 +689,37 @@ function wait(ms) { return new Promise(r => setTimeout(r, ms)) }
   border-top: 1px solid rgba(255,255,255,0.07);
   flex-shrink: 0;
 }
-.progress-pct {
-  font-size: 0.7rem;
-  color: #4b5563;
-  min-width: 34px;
+
+.footer-left {
+  min-width: 90px;
+}
+
+.page-info {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
   font-variant-numeric: tabular-nums;
 }
+
+.page-label {
+  font-size: 0.65rem;
+  color: #4b5563;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.page-num {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #818cf8;
+  line-height: 1;
+}
+
+.page-total {
+  font-size: 0.7rem;
+  color: #4b5563;
+}
+
 .progress-track {
   flex: 1;
   height: 3px;
@@ -527,6 +732,14 @@ function wait(ms) { return new Promise(r => setTimeout(r, ms)) }
   background: #6366f1;
   border-radius: 2px;
   transition: width 0.4s ease;
+}
+
+.progress-pct {
+  font-size: 0.7rem;
+  color: #4b5563;
+  min-width: 34px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── Loading ─────────────────────────────────── */

@@ -1,9 +1,12 @@
+name: web-shortcuts
 services:
   backend:
     build: ./backend
     volumes:
-      - db-data:/app/data
+      - /DATA/AppData/web-shortcuts/data:/app/data
+      - /DATA/AppData/web-shortcuts/upload:/app/upload
     restart: unless-stopped
+    network_mode: bridge
 
   frontend:
     build: ./frontend
@@ -12,6 +15,4 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
-
-volumes:
-  db-data:
+    network_mode: bridge
