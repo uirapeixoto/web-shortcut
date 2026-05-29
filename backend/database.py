@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, Float, String, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, Float, String, ForeignKey, text
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 
 DATABASE_URL = "sqlite:///./data/shortcuts.db"
@@ -35,6 +35,7 @@ class Ebook(Base):
     __tablename__ = "ebooks"
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
+    author = Column(String, default="")
     filename = Column(String, nullable=False)
     original_name = Column(String, nullable=False)
     size = Column(Integer, default=0)
@@ -66,3 +67,13 @@ def init_db():
     os.makedirs("data", exist_ok=True)
     os.makedirs("upload/ebook/epub", exist_ok=True)
     Base.metadata.create_all(bind=engine)
+    # Add columns introduced after initial schema
+    with engine.connect() as conn:
+        for col_sql in [
+            "ALTER TABLE ebooks ADD COLUMN author TEXT DEFAULT ''",
+        ]:
+            try:
+                conn.execute(text(col_sql))
+                conn.commit()
+            except Exception:
+                pass

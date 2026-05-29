@@ -1,6 +1,8 @@
+import io
 import os
 import uuid
 import zipfile
+import xml.etree.ElementTree as ET
 from datetime import datetime
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from fastapi.responses import FileResponse, Response
@@ -8,6 +10,26 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from database import get_db, Ebook, ReadingProgress
 from routes.auth import get_current_user
+
+
+def _epub_metadata(epub_bytes: bytes) -> tuple[str | None, str | None]:
+    """Return (title, author) extracted from epub OPF metadata, or (None, None)."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(epub_bytes)) as z:
+            container = ET.fromstring(z.read("META-INF/container.xml"))
+            ns_c = "urn:oasis:names:tc:opendocument:xmlns:container"
+            rootfile = container.find(f".//{{{ns_c}}}rootfile")
+            if rootfile is None:
+                return None, None
+            opf = ET.fromstring(z.read(rootfile.get("full-path", "")))
+            dc = "http://purl.org/dc/elements/1.1/"
+            title_el  = opf.find(f".//{{{dc}}}title")
+            author_el = opf.find(f".//{{{dc}}}creator")
+            title  = title_el.text.strip()  if title_el  is not None and title_el.text  else None
+            author = author_el.text.strip() if author_el is not None and author_el.text else None
+            return title, author
+    except Exception:
+        return None, None
 
 CONTENT_TYPES = {
     "html":  "text/html; charset=utf-8",
@@ -47,8 +69,10 @@ async def upload_epub(file: UploadFile = File(...), db: Session = Depends(get_db
     with open(file_path, "wb") as f:
         f.write(content)
 
+    meta_title, meta_author = _epub_metadata(content)
     ebook = Ebook(
-        title=os.path.splitext(file.filename)[0],
+        title=meta_title or os.path.splitext(file.filename)[0],
+        author=meta_author or "",
         filename=filename,
         original_name=file.filename,
         size=len(content),
@@ -60,6 +84,7 @@ async def upload_epub(file: UploadFile = File(...), db: Session = Depends(get_db
     return {
         "id": ebook.id,
         "title": ebook.title,
+        "author": ebook.author,
         "original_name": ebook.original_name,
         "size": ebook.size,
         "created_at": ebook.created_at,
@@ -73,6 +98,7 @@ def list_ebooks(db: Session = Depends(get_db)):
         {
             "id": e.id,
             "title": e.title,
+            "author": e.author or "",
             "original_name": e.original_name,
             "size": e.size,
             "created_at": e.created_at,
@@ -150,9 +176,15 @@ class ProgressIn(BaseModel):
 
 @router.get("/progress")
 def get_all_progress(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    """Return {ebook_id: percentage} for all books that have progress."""
     rows = db.query(ReadingProgress).all()
-    return {r.ebook_id: {"cfi": r.cfi, "percentage": r.percentage} for r in rows}
+    return {
+        r.ebook_id: {
+            "cfi": r.cfi,
+            "percentage": r.percentage,
+            "updated_at": r.updated_at,
+        }
+        for r in rows
+    }
 
 
 @router.get("/{ebook_id}/progress")

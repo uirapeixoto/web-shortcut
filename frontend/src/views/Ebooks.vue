@@ -65,15 +65,28 @@
       </div>
     </Transition>
 
-    <!-- Books grid -->
-    <div class="section-title" v-if="books.length">
-      <span>{{ books.length }} livro{{ books.length !== 1 ? 's' : '' }}</span>
+    <!-- Sort controls + count -->
+    <div class="toolbar" v-if="books.length">
+      <span class="book-count">{{ books.length }} livro{{ books.length !== 1 ? 's' : '' }}</span>
+      <div class="sort-group">
+        <button
+          v-for="opt in sortOptions"
+          :key="opt.key"
+          class="sort-btn"
+          :class="{ active: sortKey === opt.key }"
+          :title="opt.label"
+          @click="setSortKey(opt.key)"
+        >
+          <span class="sort-btn-icon" v-html="opt.icon"></span>
+          <span class="sort-btn-label">{{ opt.label }}</span>
+        </button>
+      </div>
     </div>
 
     <div class="books-grid" v-if="books.length">
       <div
         class="book-card"
-        v-for="book in books"
+        v-for="book in sortedBooks"
         :key="book.id"
         @click="openBook(book)"
       >
@@ -93,6 +106,7 @@
         </div>
         <div class="book-info">
           <div class="book-title">{{ book.title }}</div>
+          <div class="book-author" v-if="book.author">{{ book.author }}</div>
           <div class="book-meta">
             <span>{{ formatSize(book.size) }}</span>
             <span>{{ formatDate(book.created_at) }}</span>
@@ -119,7 +133,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import EpubFlipReader from '../components/EpubFlipReader.vue'
 
 const books       = ref([])
@@ -131,6 +145,108 @@ const isUploading = ref(false)
 const uploadProgress = ref(0)
 const isLoading   = ref(true)
 const errorMsg    = ref('')
+const sortKey     = ref(localStorage.getItem('ebooks_sort') || 'newest')
+
+const sortOptions = [
+  {
+    key: 'last_read',
+    label: 'Lido recentemente',
+    icon: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+  },
+  {
+    key: 'reading',
+    label: 'Em leitura',
+    icon: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>',
+  },
+  {
+    key: 'newest',
+    label: 'Mais recentes',
+    icon: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+  },
+  {
+    key: 'oldest',
+    label: 'Mais antigos',
+    icon: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+  },
+  {
+    key: 'progress_desc',
+    label: 'Mais lido',
+    icon: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
+  },
+  {
+    key: 'progress_asc',
+    label: 'Menos lido',
+    icon: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="14"/><line x1="12" y1="20" x2="12" y2="10"/><line x1="6" y1="20" x2="6" y2="4"/></svg>',
+  },
+  {
+    key: 'title_asc',
+    label: 'Título A→Z',
+    icon: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="14" y2="12"/><line x1="4" y1="18" x2="9" y2="18"/></svg>',
+  },
+  {
+    key: 'title_desc',
+    label: 'Título Z→A',
+    icon: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="9" y2="6"/><line x1="4" y1="12" x2="14" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>',
+  },
+  {
+    key: 'author_asc',
+    label: 'Autor A→Z',
+    icon: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+  },
+]
+
+function setSortKey(key) {
+  sortKey.value = key
+  localStorage.setItem('ebooks_sort', key)
+}
+
+const sortedBooks = computed(() => {
+  const list = [...books.value]
+  const pct  = (b) => progressMap.value[b.id]?.percentage ?? 0
+  const lastRead = (b) => progressMap.value[b.id]?.updated_at ?? ''
+  const locale = 'pt-BR'
+
+  switch (sortKey.value) {
+    case 'last_read':
+      return list.sort((a, b) => {
+        const da = lastRead(a), db = lastRead(b)
+        if (!da && !db) return 0
+        if (!da) return 1
+        if (!db) return -1
+        return db.localeCompare(da)
+      })
+    case 'reading':
+      return list.sort((a, b) => {
+        const pa = pct(a), pb = pct(b)
+        const rank = (p) => (p > 0 && p < 100 ? 0 : p === 0 ? 1 : 2)
+        const diff = rank(pa) - rank(pb)
+        if (diff !== 0) return diff
+        return lastRead(b).localeCompare(lastRead(a))
+      })
+    case 'newest':
+      return list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+    case 'oldest':
+      return list.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''))
+    case 'progress_desc':
+      return list.sort((a, b) => pct(b) - pct(a))
+    case 'progress_asc':
+      return list.sort((a, b) => pct(a) - pct(b))
+    case 'title_asc':
+      return list.sort((a, b) => a.title.localeCompare(b.title, locale))
+    case 'title_desc':
+      return list.sort((a, b) => b.title.localeCompare(a.title, locale))
+    case 'author_asc':
+      return list.sort((a, b) => {
+        const aa = a.author || '', ba = b.author || ''
+        if (!aa && !ba) return a.title.localeCompare(b.title, locale)
+        if (!aa) return 1
+        if (!ba) return -1
+        return aa.localeCompare(ba, locale)
+      })
+    default:
+      return list
+  }
+})
 
 onMounted(async () => {
   await fetchBooks()
@@ -345,15 +461,62 @@ function formatDate(iso) {
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
-/* ─── Section title ───────────────────────────── */
-.section-title {
+/* ─── Toolbar ─────────────────────────────────── */
+.toolbar {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.book-count {
   font-size: 0.8rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: #999;
-  margin-bottom: 16px;
+  white-space: nowrap;
+  padding-top: 6px;
 }
+
+.sort-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+}
+
+.sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid rgba(99,102,241,0.25);
+  background: transparent;
+  color: #888;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.sort-btn:hover {
+  border-color: #6366f1;
+  color: #6366f1;
+  background: rgba(99,102,241,0.06);
+}
+.sort-btn.active {
+  border-color: #6366f1;
+  background: #6366f1;
+  color: #fff;
+}
+.sort-btn-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.sort-btn-label { line-height: 1; }
 
 /* ─── Books grid ─────────────────────────────── */
 .books-grid {
@@ -434,11 +597,19 @@ function formatDate(iso) {
 .book-title {
   font-size: 0.88rem;
   font-weight: 600;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+.book-author {
+  font-size: 0.75rem;
+  color: #6366f1;
+  margin-bottom: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .book-meta {
   display: flex;
@@ -543,5 +714,9 @@ function formatDate(iso) {
   .book-card { background: #1e1e2e; border-color: rgba(255,255,255,0.06); }
   .upload-sub code { background: rgba(255,255,255,0.08); }
   .page-title, .page-subtitle { color: inherit; }
+  .sort-btn { color: #aaa; border-color: rgba(99,102,241,0.3); }
+  .sort-btn:hover { color: #a5b4fc; }
+  .sort-btn.active { color: #fff; background: #6366f1; }
+  .book-author { color: #a5b4fc; }
 }
 </style>
