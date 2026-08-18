@@ -44,6 +44,15 @@ class Ebook(Base):
                             cascade="all, delete", uselist=False)
 
 
+class Project(Base):
+    __tablename__ = "projects"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    local_path = Column(String, nullable=False)
+    description = Column(String, default="")
+    created_at = Column(String, default="")
+
+
 class ReadingProgress(Base):
     __tablename__ = "reading_progress"
     id         = Column(Integer, primary_key=True, index=True)

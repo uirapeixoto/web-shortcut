@@ -5,6 +5,7 @@ import Login     from '../views/Login.vue'
 import Shortcuts from '../views/Shortcuts.vue'
 import Admin     from '../views/Admin.vue'
 import Ebooks    from '../views/Ebooks.vue'
+import Documentation from '../views/Documentation.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -15,6 +16,7 @@ const router = createRouter({
     { path: '/shortcuts/:categoryId', component: Shortcuts },
     { path: '/admin',              component: Admin },
     { path: '/ebooks',             component: Ebooks },
+    { path: '/docs',               component: Documentation },
   ],
 })
 

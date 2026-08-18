@@ -5,6 +5,7 @@ from routes.auth import router as auth_router, get_current_user
 from routes.categories import router as cat_router
 from routes.shortcuts import router as sc_router
 from routes.ebooks import router as ebook_router
+from routes.projects import router as project_router
 
 app = FastAPI(title="Web Shortcut Manager")
 
@@ -22,4 +23,5 @@ init_db()
 app.include_router(auth_router)
 app.include_router(cat_router,   dependencies=[Depends(get_current_user)])
 app.include_router(sc_router,    dependencies=[Depends(get_current_user)])
-app.include_router(ebook_router, dependencies=[Depends(get_current_user)])
+app.include_router(ebook_router,   dependencies=[Depends(get_current_user)])
+app.include_router(project_router, dependencies=[Depends(get_current_user)])
