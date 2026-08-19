@@ -49,28 +49,36 @@
     </template>
 
     <!-- Project workspace -->
-    <div class="docs-workspace" v-else>
-      <div class="docs-tree-panel">
-        <button class="back-btn" @click="closeProject">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-          Projetos
+    <div class="docs-workspace" v-else :class="{ 'docs-workspace--expanded': readingExpanded }">
+      <div class="docs-tree-panel" v-show="!readingExpanded" :class="{ 'docs-tree-panel--collapsed': treeCollapsed }">
+        <template v-if="!treeCollapsed">
+          <button class="back-btn" @click="closeProject">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+            Projetos
+          </button>
+          <div class="docs-tree-header">
+            <strong>{{ activeProject.name }}</strong>
+            <button class="tree-collapse-btn" title="Recolher árvore" @click="treeCollapsed = true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>
+            </button>
+          </div>
+          <Transition name="fade">
+            <div class="error-bar error-bar--small" v-if="treeError">{{ treeError }}</div>
+          </Transition>
+          <ul class="tree-root" v-if="tree">
+            <DocTreeNode
+              v-for="child in tree.children"
+              :key="child.path"
+              :node="child"
+              :active-path="activeFilePath"
+              @open-file="openFile"
+            />
+          </ul>
+          <div class="tree-empty" v-else-if="!treeError">Carregando árvore…</div>
+        </template>
+        <button v-else class="tree-expand-btn" title="Expandir árvore" @click="treeCollapsed = false">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
         </button>
-        <div class="docs-tree-header">
-          <strong>{{ activeProject.name }}</strong>
-        </div>
-        <Transition name="fade">
-          <div class="error-bar error-bar--small" v-if="treeError">{{ treeError }}</div>
-        </Transition>
-        <ul class="tree-root" v-if="tree">
-          <DocTreeNode
-            v-for="child in tree.children"
-            :key="child.path"
-            :node="child"
-            :active-path="activeFilePath"
-            @open-file="openFile"
-          />
-        </ul>
-        <div class="tree-empty" v-else-if="!treeError">Carregando árvore…</div>
       </div>
 
       <div class="docs-editor-area">
@@ -80,7 +88,9 @@
           :file-name="activeFileName"
           :content="activeFileContent"
           :saving="isSaving"
+          :expanded="readingExpanded"
           @save="saveFile"
+          @toggle-expand="readingExpanded = !readingExpanded"
         />
       </div>
     </div>
@@ -107,7 +117,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import DocTreeNode from '../components/DocTreeNode.vue'
 import DocMarkdownPanel from '../components/DocMarkdownPanel.vue'
 
@@ -123,6 +133,8 @@ const form = reactive({ name: '', local_path: '', description: '' })
 const activeProject = ref(null)
 const tree = ref(null)
 const treeError = ref('')
+const treeCollapsed = ref(false)
+const readingExpanded = ref(false)
 
 const activeFilePath = ref('')
 const activeFileName = ref('')
@@ -130,7 +142,15 @@ const activeFileContent = ref('')
 const isSaving = ref(false)
 const panelRef = ref(null)
 
-onMounted(fetchProjects)
+onMounted(() => {
+  fetchProjects()
+  window.addEventListener('keydown', onKeydown)
+})
+onUnmounted(() => window.removeEventListener('keydown', onKeydown))
+
+function onKeydown(e) {
+  if (e.key === 'Escape' && readingExpanded.value) readingExpanded.value = false
+}
 
 async function fetchProjects() {
   isLoading.value = true
@@ -192,6 +212,7 @@ async function openProject(p) {
   activeFilePath.value = ''
   activeFileName.value = ''
   activeFileContent.value = ''
+  readingExpanded.value = false
   await loadTree()
 }
 
@@ -199,6 +220,7 @@ function closeProject() {
   activeProject.value = null
   tree.value = null
   activeFilePath.value = ''
+  readingExpanded.value = false
 }
 
 async function loadTree() {
@@ -388,6 +410,16 @@ async function saveFile(content) {
   display: flex;
   gap: 16px;
   min-height: 0;
+  transition: none;
+}
+.docs-workspace--expanded {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  background: var(--bg);
+  padding: 16px;
+  gap: 0;
+  box-sizing: border-box;
 }
 .docs-tree-panel {
   width: 260px;
@@ -398,7 +430,24 @@ async function saveFile(content) {
   border-radius: var(--radius);
   border: 1px solid rgba(255, 255, 255, 0.06);
   overflow: hidden;
+  transition: width 0.2s ease;
 }
+.docs-tree-panel--collapsed {
+  width: 40px;
+  align-items: center;
+}
+.tree-expand-btn {
+  width: 100%;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text2);
+  cursor: pointer;
+}
+.tree-expand-btn:hover { background: rgba(255, 255, 255, 0.06); color: var(--text); }
 .back-btn {
   display: flex;
   align-items: center;
@@ -413,11 +462,29 @@ async function saveFile(content) {
 }
 .back-btn:hover { color: var(--text); }
 .docs-tree-header {
-  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 8px 8px 14px;
   font-size: 0.85rem;
   color: var(--text);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
+.docs-tree-header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-collapse-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px; height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text2);
+  cursor: pointer;
+}
+.tree-collapse-btn:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
 .tree-root {
   flex: 1;
   overflow-y: auto;

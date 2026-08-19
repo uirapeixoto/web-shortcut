@@ -11,6 +11,8 @@
 
 Nova funcionalidade "Documentação Local": o usuário cadastra **projetos** apontando para uma pasta na máquina onde o backend roda, navega pela árvore de diretórios daquele projeto e abre qualquer arquivo `.md`/`.markdown` encontrado para **visualizar** (preview renderizado), **editar** (textarea) ou **split** (edição e preview lado a lado) — gravando as alterações diretamente no arquivo original em disco.
 
+Suporta caminhos digitados tanto no formato Windows (`D:\pasta\sub`) quanto Linux/WSL (`/mnt/d/pasta/sub`), árvore de arquivos retrátil, modo de leitura expandido (esconde a árvore para maximizar a área de edição/preview), diagramas Mermaid, citações e highlight de código para C#/.NET, Python, JavaScript, JSON, YAML e SQL.
+
 ---
 
 ## Motivação
@@ -48,7 +50,8 @@ O editor de Markdown existente (`MarkdownEditor.vue`, Ctrl+M) é um bloco de not
 |---|---|
 | `src/router/index.js` | Rota `/docs` |
 | `src/components/SideMenu.vue` | Link "Documentação Local" na sidebar |
-| `src/style.css` | Adicionada classe `.modal-hint` (mensagem de erro em modais) |
+| `src/style.css` | Adicionadas classes `.modal-hint` (erro em modais) e `.modal-tip` (dica de formato de caminho) |
+| `package.json` | Adicionado `highlight.js` |
 
 ---
 
@@ -86,6 +89,27 @@ Além disso:
 
 ---
 
+## Suporte a Caminho Windows (WSL)
+
+Ambiente de desenvolvimento roda em WSL2, onde discos Windows ficam montados em `/mnt/<letra>/...` — um caminho colado do Explorer do Windows (`D:\pasta\sub`) não existe nesse formato para o processo Linux. `_to_fs_path()` (`backend/routes/projects.py`) detecta esse padrão (`X:\...` ou `X:/...`) e traduz para `/mnt/x/...` **apenas no momento de tocar o disco** (`isdir`, montagem de árvore, leitura/escrita de arquivo) — o valor salvo no banco e exibido na UI permanece exatamente como o usuário digitou. A tradução acontece antes de `_resolve_safe_path()`, então a proteção contra path traversal continua válida para os dois formatos.
+
+---
+
+## Renderização: Mermaid, Highlight de Código e Citações
+
+- **Mermaid**: blocos ` ```mermaid ` são detectados no HTML já parseado e renderizados como SVG via `mermaid.render()`, carregado sob demanda (`import('mermaid')`) — já existia no editor original e foi preservado no novo `DocMarkdownPanel.vue`.
+- **Highlight de código**: `highlight.js` (core + linguagens individuais) é carregado sob demanda, registrando apenas `csharp`, `python`, `javascript`, `json`, `yaml` e `sql` — mantém o bundle inicial pequeno (cada linguagem vira um chunk separado no build). Aliases comuns (`cs`/`dotnet` → `csharp`, `py` → `python`, `js` → `javascript`, `yml` → `yaml`) são normalizados antes de aplicar o highlight. Tema de cores customizado em `DocMarkdownPanel.vue` para combinar com a paleta dark do app.
+- **Citações**: já suportadas nativamente pelo `marked` (GFM); o estilo visual foi refinado (fundo sutil, cantos arredondados, cor diferenciada para blockquotes aninhados).
+
+---
+
+## UX: Árvore Retrátil e Modo de Leitura Expandido
+
+- **Árvore retrátil**: botão no cabeçalho da árvore (`docs-tree-header`) recolhe o painel lateral para uma faixa estreita de 40px (só ícone para reabrir), liberando espaço horizontal sem perder o contexto do projeto ativo.
+- **Modo de leitura expandido**: botão no toolbar do editor (`DocMarkdownPanel.vue`) alterna `docs-workspace` para `position: fixed; inset: 0`, ocupando toda a viewport e escondendo a árvore — maximiza a área de edição/split/preview para leitura ou escrita prolongada. Sai do modo com o mesmo botão ou `Esc`.
+
+---
+
 ## Decisões de Design
 
 **Edição grava direto no arquivo original**: ao contrário do editor global (que só usa `localStorage`), esta feature é um visualizador/editor de documentação *real* — o botão "Salvar" (e `Ctrl+S`) sobrescreve o `.md` no disco via `PUT /projects/{id}/file`. Por isso o salvamento é deliberado (não há auto-save), com indicador visual de "alterações não salvas" (`dirty` state) para reduzir o risco de perda ou sobrescrita acidental.
@@ -108,7 +132,12 @@ Além disso:
 6. Alterne entre os modos "Editar", "Split" e "Preview"; confirme que blocos ` ```mermaid ` renderizam como diagrama no preview.
 7. Edite o texto, confirme o indicador de "alterações não salvas", salve (botão ou `Ctrl+S`), e confirme fora da aplicação (ex: `cat arquivo.md`) que o arquivo no disco foi realmente alterado.
 8. Tente acessar um `path` fora da pasta do projeto diretamente pela URL da API — deve retornar `400`.
-9. Exclua o projeto e confirme que os arquivos originais permanecem intactos no disco.
+9. Crie um projeto com caminho no formato Windows (ex: `D:\pasta\docs`) — deve validar e funcionar normalmente se a pasta existir no disco montado.
+10. Em um arquivo com blocos ` ```csharp `, ` ```python `, ` ```javascript `, ` ```json `, ` ```yaml ` e ` ```sql `, confirme que o preview aplica highlight de sintaxe colorido em cada um.
+11. Confirme que uma citação (`> texto`) aparece com fundo destacado e borda lateral no preview.
+12. Clique no botão de recolher (◀◀) no cabeçalho da árvore — ela deve encolher para uma faixa estreita; clique novamente para reabrir.
+13. Clique no botão de expandir (⛶) no toolbar do editor — a árvore deve desaparecer e o editor ocupar a tela inteira; pressione `Esc` ou clique novamente para sair.
+14. Exclua o projeto e confirme que os arquivos originais permanecem intactos no disco.
 
 ---
 
@@ -133,9 +162,16 @@ Além disso:
 5. **Múltiplas abas** de arquivos abertos simultaneamente no workspace.
 6. **Suporte a outros formatos de texto** (`.txt`, `.mdx`) na árvore, não só `.md`/`.markdown`.
 7. **Volume Docker configurável** para permitir uso desta funcionalidade em produção (montagem de pasta host via `docker-compose.yml`).
+8. **Mais linguagens de highlight** sob demanda (ex: Go, Rust, PHP, Bash) além das 6 já suportadas.
+9. **Botão "copiar código"** em cada bloco de código do preview.
+10. **Lembrar estado de árvore recolhida/expandida** por projeto (hoje reseta ao trocar de projeto).
 
 ---
 
 ## Dependências Adicionadas
 
-Nenhuma — reaproveita `marked` (^18.0.4) e `mermaid` (^11.15.0), já usados por `MarkdownEditor.vue`.
+| Pacote | Versão | Uso |
+|---|---|---|
+| `highlight.js` | ^11.12.0 | Highlight de sintaxe para C#/.NET, Python, JavaScript, JSON, YAML e SQL no preview |
+
+Reaproveita também `marked` (^18.0.4) e `mermaid` (^11.15.0), já usados por `MarkdownEditor.vue`.

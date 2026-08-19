@@ -28,6 +28,10 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
           {{ saving ? 'Salvando…' : 'Salvar' }}
         </button>
+        <button class="dm-btn-icon" :title="expanded ? 'Sair da leitura expandida' : 'Expandir área de leitura'" @click="$emit('toggle-expand')">
+          <svg v-if="!expanded" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+          <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="10" y1="14" x2="3" y2="21"/><line x1="21" y1="3" x2="14" y2="10"/></svg>
+        </button>
       </div>
     </div>
 
@@ -121,8 +125,9 @@ const props = defineProps({
   fileName: { type: String, default: '' },
   content: { type: String, default: '' },
   saving: { type: Boolean, default: false },
+  expanded: { type: Boolean, default: false },
 })
-const emit = defineEmits(['save'])
+const emit = defineEmits(['save', 'toggle-expand'])
 
 const mode = ref('split')
 const source = ref(props.content)
@@ -143,6 +148,61 @@ async function loadMermaid() {
     mermaid.initialize({ startOnLoad: false, theme: 'dark', darkMode: true, securityLevel: 'loose' })
   }
   return mermaid
+}
+
+const LANG_ALIASES = {
+  cs: 'csharp', dotnet: 'csharp', 'c#': 'csharp',
+  py: 'python',
+  js: 'javascript', mjs: 'javascript', cjs: 'javascript',
+  yml: 'yaml',
+}
+
+let hljs = null
+async function loadHighlight() {
+  if (!hljs) {
+    const [core, csharp, python, javascript, json, yaml, sql] = await Promise.all([
+      import('highlight.js/lib/core'),
+      import('highlight.js/lib/languages/csharp'),
+      import('highlight.js/lib/languages/python'),
+      import('highlight.js/lib/languages/javascript'),
+      import('highlight.js/lib/languages/json'),
+      import('highlight.js/lib/languages/yaml'),
+      import('highlight.js/lib/languages/sql'),
+    ])
+    hljs = core.default
+    hljs.registerLanguage('csharp', csharp.default)
+    hljs.registerLanguage('python', python.default)
+    hljs.registerLanguage('javascript', javascript.default)
+    hljs.registerLanguage('json', json.default)
+    hljs.registerLanguage('yaml', yaml.default)
+    hljs.registerLanguage('sql', sql.default)
+  }
+  return hljs
+}
+
+async function renderHighlight() {
+  if (!previewRef.value) return
+  const blocks = previewRef.value.querySelectorAll('pre code[class*="language-"]')
+  if (!blocks.length) return
+  let needsHighlight = false
+  for (const block of blocks) {
+    const lang = block.className.replace('language-', '').trim().toLowerCase()
+    if (lang && lang !== 'mermaid' && (LANG_ALIASES[lang] || hljs?.getLanguage(lang))) {
+      needsHighlight = true
+      break
+    }
+  }
+  if (!needsHighlight) return
+
+  const hl = await loadHighlight()
+  for (const block of blocks) {
+    const rawLang = block.className.replace('language-', '').trim().toLowerCase()
+    const lang = LANG_ALIASES[rawLang] || rawLang
+    if (!hl.getLanguage(lang)) continue
+    const result = hl.highlight(block.textContent, { language: lang })
+    block.innerHTML = result.value
+    block.classList.add('hljs')
+  }
 }
 
 watch(() => props.content, (val) => {
@@ -172,6 +232,7 @@ async function renderMarkdown() {
   rendering.value = false
   await nextTick()
   await renderMermaid()
+  await renderHighlight()
 }
 
 async function renderMermaid() {
@@ -340,6 +401,20 @@ function handleTab(e) {
 .dm-btn-save:hover:not(:disabled) { background: var(--accent2); }
 .dm-btn-save:disabled { opacity: 0.4; cursor: default; }
 
+.dm-btn-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px; height: 30px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text2);
+  cursor: pointer;
+  transition: var(--trans);
+}
+.dm-btn-icon:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+
 .dm-format-bar {
   display: flex;
   align-items: center;
@@ -418,12 +493,53 @@ function handleTab(e) {
   font-size: 0.85em;
 }
 .dm-preview :deep(pre code) { background: none; padding: 0; }
+.dm-preview :deep(pre) { position: relative; }
 .dm-preview :deep(blockquote) {
   border-left: 3px solid var(--accent);
   margin: 0.8em 0;
-  padding: 2px 14px;
+  padding: 6px 16px;
   color: var(--text2);
+  background: rgba(99, 102, 241, 0.06);
+  border-radius: 0 8px 8px 0;
 }
+.dm-preview :deep(blockquote p) { margin: 0.3em 0; }
+.dm-preview :deep(blockquote blockquote) {
+  border-left-color: var(--accent2);
+  margin: 0.5em 0;
+  background: rgba(168, 85, 247, 0.06);
+}
+
+/* highlight.js — dark theme matching the app's palette */
+.dm-preview :deep(.hljs) { color: var(--text); }
+.dm-preview :deep(.hljs-keyword),
+.dm-preview :deep(.hljs-selector-tag),
+.dm-preview :deep(.hljs-literal),
+.dm-preview :deep(.hljs-section),
+.dm-preview :deep(.hljs-link) { color: #c792ea; }
+.dm-preview :deep(.hljs-function .hljs-keyword) { color: #c792ea; }
+.dm-preview :deep(.hljs-string),
+.dm-preview :deep(.hljs-attr),
+.dm-preview :deep(.hljs-symbol),
+.dm-preview :deep(.hljs-bullet),
+.dm-preview :deep(.hljs-addition) { color: #c3e88d; }
+.dm-preview :deep(.hljs-title),
+.dm-preview :deep(.hljs-title.class_),
+.dm-preview :deep(.hljs-title.function_),
+.dm-preview :deep(.hljs-name) { color: #82aaff; }
+.dm-preview :deep(.hljs-comment),
+.dm-preview :deep(.hljs-quote),
+.dm-preview :deep(.hljs-deletion) { color: #676e95; font-style: italic; }
+.dm-preview :deep(.hljs-number),
+.dm-preview :deep(.hljs-type),
+.dm-preview :deep(.hljs-built_in) { color: #f78c6c; }
+.dm-preview :deep(.hljs-attribute),
+.dm-preview :deep(.hljs-variable),
+.dm-preview :deep(.hljs-template-variable),
+.dm-preview :deep(.hljs-property) { color: #ffcb6b; }
+.dm-preview :deep(.hljs-meta),
+.dm-preview :deep(.hljs-tag) { color: #89ddff; }
+.dm-preview :deep(.hljs-emphasis) { font-style: italic; }
+.dm-preview :deep(.hljs-strong) { font-weight: 700; }
 .dm-preview :deep(table) { border-collapse: collapse; width: 100%; }
 .dm-preview :deep(th), .dm-preview :deep(td) {
   border: 1px solid rgba(255, 255, 255, 0.12);
