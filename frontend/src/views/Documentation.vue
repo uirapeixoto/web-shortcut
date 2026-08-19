@@ -92,7 +92,8 @@
         <label>Nome</label>
         <input v-model="form.name" placeholder="Ex: Documentação Backend" />
         <label>Caminho local</label>
-        <input v-model="form.local_path" placeholder="/DATA/projetos/meu-app/docs" />
+        <input v-model="form.local_path" placeholder="D:\projetos\meu-app\docs ou /DATA/projetos/meu-app/docs" />
+        <p class="modal-tip">Aceita caminho do Windows (<code>D:\pasta</code>) ou do Linux/WSL (<code>/mnt/d/pasta</code>) — o servidor reconhece os dois formatos.</p>
         <label>Descrição</label>
         <input v-model="form.description" placeholder="Breve descrição do projeto" />
         <p class="modal-hint" v-if="modalError">{{ modalError }}</p>

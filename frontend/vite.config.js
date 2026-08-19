@@ -7,7 +7,7 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     proxy: {
-      '/api': { target: 'http://localhost:8001', rewrite: p => p.replace(/^\/api/, '') }
+      '/api': { target: 'http://localhost:8010', rewrite: p => p.replace(/^\/api/, '') }
     }
   },
   build: {

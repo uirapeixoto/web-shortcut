@@ -11,9 +11,20 @@ IGNORED_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", ".idea",
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
+def _to_fs_path(path: str) -> str:
+    """Translate a Windows-style path (D:\\foo or D:/foo) to the equivalent WSL
+    mount path (/mnt/d/foo) so the backend can access disks shared with Windows.
+    Paths that are already POSIX-style are returned unchanged."""
+    if len(path) >= 2 and path[1] == ":" and (path[0].isalpha()):
+        drive = path[0].lower()
+        rest = path[2:].replace("\\", "/").lstrip("/")
+        return f"/mnt/{drive}/{rest}" if rest else f"/mnt/{drive}"
+    return path
+
+
 def _resolve_safe_path(project: Project, rel_path: str) -> str:
     """Resolve rel_path against the project's local_path, rejecting traversal outside of it."""
-    base = os.path.realpath(project.local_path)
+    base = os.path.realpath(_to_fs_path(project.local_path))
     target = os.path.realpath(os.path.join(base, rel_path or ""))
     if target != base and not target.startswith(base + os.sep):
         raise HTTPException(status_code=400, detail="Caminho inválido")
@@ -65,11 +76,12 @@ def _project_out(p: Project) -> dict:
 
 @router.post("")
 def create_project(data: ProjectIn, db: Session = Depends(get_db)):
-    if not os.path.isdir(data.local_path):
+    fs_path = _to_fs_path(data.local_path)
+    if not os.path.isdir(fs_path):
         raise HTTPException(status_code=400, detail="Caminho não encontrado ou não é uma pasta")
     project = Project(
         name=data.name,
-        local_path=os.path.realpath(data.local_path),
+        local_path=data.local_path,
         description=data.description,
         created_at=datetime.utcnow().isoformat(),
     )
@@ -98,10 +110,10 @@ def update_project(project_id: int, data: ProjectIn, db: Session = Depends(get_d
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
-    if not os.path.isdir(data.local_path):
+    if not os.path.isdir(_to_fs_path(data.local_path)):
         raise HTTPException(status_code=400, detail="Caminho não encontrado ou não é uma pasta")
     project.name = data.name
-    project.local_path = os.path.realpath(data.local_path)
+    project.local_path = data.local_path
     project.description = data.description
     db.commit()
     db.refresh(project)
@@ -123,9 +135,10 @@ def get_tree(project_id: int, db: Session = Depends(get_db)):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
-    if not os.path.isdir(project.local_path):
+    fs_path = _to_fs_path(project.local_path)
+    if not os.path.isdir(fs_path):
         raise HTTPException(status_code=404, detail="Pasta do projeto não encontrada no disco")
-    return _build_tree(project.local_path)
+    return _build_tree(fs_path)
 
 
 @router.get("/{project_id}/file")

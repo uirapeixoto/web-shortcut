@@ -166,6 +166,8 @@ a { color: inherit; text-decoration: none; }
 .modal input[type=color] { height: 36px; padding: 2px; cursor: pointer; }
 .modal input:focus, .modal select:focus { border-color: var(--accent); }
 .modal-hint { font-size: .78rem; color: #ef4444; margin-top: .6rem; }
+.modal-tip { font-size: .74rem; color: var(--text2); margin: .3rem 0 0; line-height: 1.4; }
+.modal-tip code { background: var(--bg3); padding: 1px 5px; border-radius: 4px; }
 .modal-actions { display: flex; gap: .5rem; justify-content: flex-end; margin-top: 1.2rem; }
 .btn-cancel { padding: .5rem 1rem; background: var(--bg3); border: none; border-radius: 8px; color: var(--text2); cursor: pointer; }
 .btn-save { padding: .5rem 1.2rem; background: var(--accent); border: none; border-radius: 8px; color: #fff; cursor: pointer; font-weight: 600; }
