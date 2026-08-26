@@ -13,6 +13,7 @@
     </nav>
 
     <div class="top-user" v-if="auth.user">
+      <ThemeSelector />
       <div class="user-avatar" :title="auth.user.name">
         {{ initials }}
       </div>
@@ -33,6 +34,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStore } from '../store/index.js'
 import { useAuthStore } from '../store/auth.js'
+import ThemeSelector from './ThemeSelector.vue'
 
 const store  = useStore()
 const auth   = useAuthStore()

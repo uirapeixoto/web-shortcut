@@ -20,12 +20,15 @@ import SideMenu from './components/SideMenu.vue'
 import TaskAlarm from './components/TaskAlarm.vue'
 import { useStore } from './store/index.js'
 import { useSchedulerStore } from './store/scheduler.js'
+import { useThemeStore } from './store/theme.js'
 
 const route = useRoute()
 const store = useStore()
 const scheduler = useSchedulerStore()
+const theme = useThemeStore()
 
 onMounted(() => {
+  theme.initTheme()
   store.fetchCategories()
   scheduler.init()
 })
