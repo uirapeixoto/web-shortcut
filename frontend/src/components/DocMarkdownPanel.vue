@@ -23,6 +23,15 @@
       </div>
 
       <div class="dm-toolbar-actions" v-if="filePath">
+        <div class="dm-font-controls">
+          <button class="dm-btn-icon" title="Diminuir fonte" :disabled="fontSize <= MIN_FONT_SIZE" @click="decreaseFontSize">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <span class="dm-font-size" :title="`Tamanho da fonte: ${fontSize}px`">{{ fontSize }}px</span>
+          <button class="dm-btn-icon" title="Aumentar fonte" :disabled="fontSize >= MAX_FONT_SIZE" @click="increaseFontSize">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+        </div>
         <span class="dm-save-msg" :class="{ visible: !!saveMsg }">{{ saveMsg }}</span>
         <button class="dm-btn-save" :disabled="!dirty || saving" @click="save" title="Salvar (Ctrl+S)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
@@ -89,6 +98,7 @@
           <textarea
             ref="textareaRef"
             class="dm-textarea"
+            :style="{ fontSize: fontSize + 'px' }"
             v-model="source"
             spellcheck="false"
             @keydown.tab.prevent="handleTab"
@@ -104,7 +114,7 @@
             <div class="dm-spinner"></div>
             <span>Renderizando...</span>
           </div>
-          <div v-else class="dm-preview" ref="previewRef" v-html="rendered" />
+          <div v-else class="dm-preview" ref="previewRef" :style="{ fontSize: fontSize + 'px' }" v-html="rendered" />
         </div>
       </template>
     </div>
@@ -131,6 +141,21 @@ const emit = defineEmits(['save', 'toggle-expand'])
 
 const mode = ref('split')
 const source = ref(props.content)
+
+const MIN_FONT_SIZE = 12
+const MAX_FONT_SIZE = 24
+const DEFAULT_FONT_SIZE = 14
+const FONT_SIZE_KEY = 'dm-font-size'
+const fontSize = ref(Number(localStorage.getItem(FONT_SIZE_KEY)) || DEFAULT_FONT_SIZE)
+
+watch(fontSize, (val) => localStorage.setItem(FONT_SIZE_KEY, val))
+
+function increaseFontSize() {
+  fontSize.value = Math.min(MAX_FONT_SIZE, fontSize.value + 1)
+}
+function decreaseFontSize() {
+  fontSize.value = Math.max(MIN_FONT_SIZE, fontSize.value - 1)
+}
 const dirty = ref(false)
 const saveMsg = ref('')
 const textareaRef = ref(null)
@@ -382,6 +407,23 @@ function handleTab(e) {
 .dm-mode-tabs button.active { background: var(--accent); color: #fff; }
 
 .dm-toolbar-actions { display: flex; align-items: center; gap: 10px; }
+.dm-font-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.dm-font-controls .dm-btn-icon { width: 24px; height: 24px; }
+.dm-font-controls .dm-btn-icon:disabled { opacity: 0.3; cursor: default; }
+.dm-font-size {
+  min-width: 38px;
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--text2);
+  user-select: none;
+}
 .dm-save-msg { font-size: 0.78rem; color: #4ade80; opacity: 0; transition: opacity 0.2s; }
 .dm-save-msg.visible { opacity: 1; }
 .dm-btn-save {
